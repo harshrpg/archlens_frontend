@@ -7,6 +7,8 @@ import { useEffect, useMemo, useState } from "react";
 import { getJob } from "@/lib/archlens/client";
 import type { JobGetResponse, JobStatus } from "@/lib/archlens/types";
 
+const ESTIMATED_MS = 2 * 60 * 1000;
+
 function StatusPill({ status }: { status: JobStatus }) {
   const styles =
     status === "DONE"
@@ -19,6 +21,20 @@ function StatusPill({ status }: { status: JobStatus }) {
       {status}
     </span>
   );
+}
+
+function msToClock(ms: number): string {
+  const clamped = Math.max(0, ms);
+  const totalSeconds = Math.ceil(clamped / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function parseIsoMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : null;
 }
 
 function formatUrlHost(urlString: string | null | undefined): string | null {
@@ -41,11 +57,10 @@ function Section({
 }) {
   return (
     <section
-      className={`rounded-2xl border bg-white p-6 shadow-sm dark:bg-zinc-950 ${
-        subtle
-          ? "border-zinc-100 dark:border-zinc-900"
-          : "border-zinc-200 dark:border-zinc-800"
-      }`}
+      className={`rounded-2xl border bg-white p-6 shadow-sm dark:bg-zinc-950 ${subtle
+        ? "border-zinc-100 dark:border-zinc-900"
+        : "border-zinc-200 dark:border-zinc-800"
+        }`}
     >
       <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
       <div className="mt-3">{children}</div>
@@ -65,6 +80,68 @@ function Bullets({ items }: { items: string[] }) {
   );
 }
 
+function GenerationLoader({
+  anchorMs,
+  status,
+}: {
+  anchorMs: number;
+  status: JobStatus;
+}) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 250);
+    return () => clearInterval(id);
+  }, []);
+
+  const elapsed = Math.max(0, nowMs - anchorMs);
+  const progress = Math.min(1, elapsed / ESTIMATED_MS);
+  const remaining = Math.max(0, ESTIMATED_MS - elapsed);
+
+  return (
+    <Section title="Generating…">
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-zinc-700 dark:text-zinc-300">
+              We’re analyzing the site and generating a reference architecture.
+            </p>
+            <span className="text-xs text-zinc-500 dark:text-zinc-500">
+              ETA {msToClock(remaining)}
+            </span>
+          </div>
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+            <div
+              className="h-full rounded-full bg-zinc-900 transition-[width] duration-300 ease-out dark:bg-zinc-50"
+              style={{ width: `${Math.round(progress * 100)}%` }}
+              aria-label="Generation progress"
+              role="progressbar"
+              aria-valuenow={Math.round(progress * 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-500">
+            <span>{status === "QUEUED" ? "Queued" : "Running"}</span>
+            <span>{Math.round(progress * 100)}%</span>
+          </div>
+        </div>
+
+        <div className="grid gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <p className="font-medium text-zinc-900 dark:text-zinc-100">
+            What you’ll get
+          </p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>Architecture summary, assumptions, tradeoffs, benefits</li>
+            <li>Service-by-service component breakdown</li>
+            <li>Diagram + data-flow explanation</li>
+          </ul>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 export default function JobPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = params.jobId;
@@ -75,6 +152,10 @@ export default function JobPage() {
   const diagramS3Uri = job?.result?.diagram?.s3_uri ?? null;
   const diagramCodeS3Uri = job?.diagram_code_s3_uri ?? null;
   const inputHost = formatUrlHost(job?.input_url);
+  const loaderAnchorMs =
+    parseIsoMs(job?.started_at) ??
+    parseIsoMs(job?.created_at) ??
+    Date.now();
 
   const shouldPoll = useMemo(() => {
     return job?.status === "QUEUED" || job?.status === "RUNNING" || job === null;
@@ -114,15 +195,20 @@ export default function JobPage() {
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10">
         <header className="flex flex-col gap-3">
           <div className="flex items-start justify-between gap-4">
-            <div className="flex flex-col gap-1">
-              <p className="text-sm text-zinc-500 dark:text-zinc-500">
-                {inputHost ? inputHost : "Architecture result"}
-              </p>
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {job?.status === "DONE" && job.result?.architecture?.title
-                  ? job.result.architecture.title
-                  : "Generating architecture…"}
-              </h1>
+            <div className="flex items-start gap-3">
+              <Link href="/" aria-label="ArchLens home">
+                <img src="/icon.png" alt="" className="h-20 w-auto" />
+              </Link>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-zinc-500 dark:text-zinc-500">
+                  {inputHost ? inputHost : "Architecture result"}
+                </p>
+                <h1 className="text-2xl font-semibold tracking-tight">
+                  {job?.status === "DONE" && job.result?.architecture?.title
+                    ? job.result.architecture.title
+                    : "Generating architecture…"}
+                </h1>
+              </div>
             </div>
             <Link
               className="text-sm font-medium text-zinc-900 underline underline-offset-4 dark:text-zinc-100"
@@ -172,11 +258,7 @@ export default function JobPage() {
         ) : null}
 
         {job && job.status !== "DONE" && job.status !== "FAILED" ? (
-          <Section title="Working…">
-            <p className="text-sm text-zinc-700 dark:text-zinc-300">
-              This can take a minute or two depending on the site.
-            </p>
-          </Section>
+          <GenerationLoader anchorMs={loaderAnchorMs} status={job.status} />
         ) : null}
 
         {job?.status === "DONE" && job.result?.architecture ? (

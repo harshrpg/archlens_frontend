@@ -28,6 +28,11 @@ export default function Home() {
     <div className="min-h-screen bg-white text-zinc-950 dark:bg-black dark:text-zinc-50">
       <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-center justify-center gap-8 px-6 py-12">
         <header className="flex flex-col items-center gap-2 text-center">
+          <img
+            src="/icon.png"
+            alt="ArchLens"
+            className="h-20 w-auto"
+          />
           <h1 className="text-5xl font-semibold tracking-tight">ArchLens</h1>
           <p className="text-base text-zinc-600 dark:text-zinc-400">
             Generate an AWS architecture brief and diagram from any public website.
