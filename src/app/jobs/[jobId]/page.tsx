@@ -21,6 +21,50 @@ function StatusPill({ status }: { status: JobStatus }) {
   );
 }
 
+function formatUrlHost(urlString: string | null | undefined): string | null {
+  if (!urlString) return null;
+  try {
+    return new URL(urlString).host;
+  } catch {
+    return urlString;
+  }
+}
+
+function Section({
+  title,
+  children,
+  subtle,
+}: {
+  title: string;
+  children: React.ReactNode;
+  subtle?: boolean;
+}) {
+  return (
+    <section
+      className={`rounded-2xl border bg-white p-6 shadow-sm dark:bg-zinc-950 ${
+        subtle
+          ? "border-zinc-100 dark:border-zinc-900"
+          : "border-zinc-200 dark:border-zinc-800"
+      }`}
+    >
+      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+function Bullets({ items }: { items: string[] }) {
+  return (
+    <ul className="list-disc space-y-2 pl-5 text-sm text-zinc-700 dark:text-zinc-300">
+      {items.map((x, idx) => (
+        <li key={`${idx}-${x.slice(0, 16)}`} className="whitespace-pre-wrap">
+          {x}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function JobPage() {
   const params = useParams<{ jobId: string }>();
   const jobId = params.jobId;
@@ -30,6 +74,7 @@ export default function JobPage() {
   const diagramUrl = job?.result?.diagram?.url ?? null;
   const diagramS3Uri = job?.result?.diagram?.s3_uri ?? null;
   const diagramCodeS3Uri = job?.diagram_code_s3_uri ?? null;
+  const inputHost = formatUrlHost(job?.input_url);
 
   const shouldPoll = useMemo(() => {
     return job?.status === "QUEUED" || job?.status === "RUNNING" || job === null;
@@ -66,36 +111,44 @@ export default function JobPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-zinc-50">
-      <main className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-6 py-12">
+      <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10">
         <header className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <h1 className="text-2xl font-semibold tracking-tight">Job</h1>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                <span className="font-medium text-zinc-900 dark:text-zinc-200">
-                  ID:
-                </span>{" "}
-                <code data-testid="job-id">{jobId}</code>
+              <p className="text-sm text-zinc-500 dark:text-zinc-500">
+                {inputHost ? inputHost : "Architecture result"}
               </p>
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {job?.status === "DONE" && job.result?.architecture?.title
+                  ? job.result.architecture.title
+                  : "Generating architecture…"}
+              </h1>
             </div>
             <Link
               className="text-sm font-medium text-zinc-900 underline underline-offset-4 dark:text-zinc-100"
               href="/"
             >
-              New job
+              New
             </Link>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">
-              Status:
-            </span>
+          <div className="flex flex-wrap items-center gap-3">
             <span data-testid="job-status">
               <StatusPill status={job?.status ?? "QUEUED"} />
             </span>
+            {job?.created_at ? (
+              <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                Created{" "}
+                <span className="font-mono text-xs">{job.created_at}</span>
+              </span>
+            ) : null}
+            <span className="text-xs text-zinc-400 dark:text-zinc-600">
+              <span className="sr-only">Job id</span>
+              <code data-testid="job-id">{jobId}</code>
+            </span>
             {shouldPoll ? (
               <span className="text-sm text-zinc-500 dark:text-zinc-500">
-                Polling…
+                Updating…
               </span>
             ) : null}
           </div>
@@ -111,34 +164,37 @@ export default function JobPage() {
         </header>
 
         {job?.status === "FAILED" ? (
-          <section className="rounded-2xl border border-red-200 bg-white p-6 dark:border-red-900 dark:bg-zinc-950">
-            <h2 className="text-lg font-semibold">Job failed</h2>
-            <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <Section title="Couldn’t generate this architecture" subtle>
+            <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
               {job.error_message ?? "Unknown error"}
             </p>
-          </section>
+          </Section>
+        ) : null}
+
+        {job && job.status !== "DONE" && job.status !== "FAILED" ? (
+          <Section title="Working…">
+            <p className="text-sm text-zinc-700 dark:text-zinc-300">
+              This can take a minute or two depending on the site.
+            </p>
+          </Section>
         ) : null}
 
         {job?.status === "DONE" && job.result?.architecture ? (
           <>
-            <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-              <h2
-                data-testid="arch-title"
-                className="text-xl font-semibold tracking-tight"
-              >
-                {job.result.architecture.title}
-              </h2>
+            <Section title="Summary">
               <p
                 data-testid="arch-summary"
-                className="mt-3 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300"
+                className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300"
               >
                 {job.result.architecture.summary}
               </p>
-            </section>
+            </Section>
 
-            <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-              <div className="flex items-center justify-between gap-4">
-                <h2 className="text-lg font-semibold">Diagram</h2>
+            <Section title="Diagram">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Reference diagram generated for this site.
+                </p>
                 {diagramUrl ? (
                   <a
                     className="text-sm font-medium text-zinc-900 underline underline-offset-4 dark:text-zinc-100"
@@ -157,18 +213,18 @@ export default function JobPage() {
                   <img
                     data-testid="diagram-image"
                     src={diagramUrl}
-                    alt="ArchLens diagram"
-                    className="h-auto w-full rounded-xl border border-zinc-200 dark:border-zinc-800"
+                    alt="AWS architecture diagram"
+                    className="h-auto w-full rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950"
                   />
                 </div>
               ) : (
                 <div className="mt-4 space-y-2 text-sm text-zinc-700 dark:text-zinc-300">
                   <p data-testid="diagram-missing">
-                    No browser-renderable diagram URL was provided for this job.
+                    Diagram image URL wasn’t available for this run.
                   </p>
                   {diagramS3Uri ? (
                     <p>
-                      S3 URI: <code>{diagramS3Uri}</code>
+                      Diagram S3 URI: <code>{diagramS3Uri}</code>
                     </p>
                   ) : null}
                   {diagramCodeS3Uri ? (
@@ -178,18 +234,73 @@ export default function JobPage() {
                   ) : null}
                 </div>
               )}
-            </section>
-          </>
-        ) : null}
+            </Section>
 
-        {job && job.status !== "DONE" && job.status !== "FAILED" ? (
-          <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <h2 className="text-lg font-semibold">Working…</h2>
-            <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">
-              We’ll keep polling until the job is DONE. If your backend is down,
-              you’ll see an error above.
-            </p>
-          </section>
+            <Section title="How it works (data flow)">
+              <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+                {job.result.architecture.data_flow}
+              </p>
+            </Section>
+
+            <Section title="Reasoning (functional)">
+              <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+                {job.result.architecture.functional_reasoning}
+              </p>
+            </Section>
+
+            <Section title="Reasoning (non-functional)">
+              <p className="whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">
+                {job.result.architecture.non_functional_reasoning}
+              </p>
+            </Section>
+
+            <Section title="Components">
+              <div className="overflow-x-auto">
+                <table className="w-full border-separate border-spacing-0 text-left text-sm">
+                  <thead>
+                    <tr className="text-xs text-zinc-500 dark:text-zinc-500">
+                      <th className="border-b border-zinc-200 pb-2 pr-4 font-medium dark:border-zinc-800">
+                        Service
+                      </th>
+                      <th className="border-b border-zinc-200 pb-2 pr-4 font-medium dark:border-zinc-800">
+                        Role
+                      </th>
+                      <th className="border-b border-zinc-200 pb-2 font-medium dark:border-zinc-800">
+                        Notes
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-zinc-700 dark:text-zinc-300">
+                    {job.result.architecture.components.map((c) => (
+                      <tr key={`${c.name}-${c.role}`}>
+                        <td className="border-b border-zinc-100 py-3 pr-4 align-top dark:border-zinc-900">
+                          {c.name}
+                        </td>
+                        <td className="border-b border-zinc-100 py-3 pr-4 align-top dark:border-zinc-900">
+                          {c.role}
+                        </td>
+                        <td className="border-b border-zinc-100 py-3 align-top dark:border-zinc-900">
+                          {c.description}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Section>
+
+            <Section title="Assumptions">
+              <Bullets items={job.result.architecture.assumptions} />
+            </Section>
+
+            <Section title="Key tradeoffs">
+              <Bullets items={job.result.architecture.key_tradeoffs} />
+            </Section>
+
+            <Section title="Benefits">
+              <Bullets items={job.result.architecture.benefits} />
+            </Section>
+          </>
         ) : null}
       </main>
     </div>
